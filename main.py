@@ -29,28 +29,32 @@ def process_document(path):
     return text, tables
 
 
-# --- التنفيذ ---
-file_name = "test.pdf"  # تأكد من وضع ملف بهذا الاسم في المجلد
+# --- التنفيذ المطور ---
+file_name = "test.pdf"
 
 if os.path.exists(file_name):
-    print(f"🔄 جاري معالجة المستند...")
+    print(f"🔍 جاري محاولة قراءة: {file_name}...")
     full_text, all_tables = process_document(file_name)
 
-    # حفظ الجداول في Excel
-    if all_tables:
-        with pd.ExcelWriter("output_tables.xlsx") as writer:
-            for i, df in enumerate(all_tables):
-                df.to_excel(writer, sheet_name=f"Table_{i+1}", index=False)
-        print("✅ تم استخراج الجداول إلى output_tables.xlsx")
+    # التحقق من وجود نص
+    if not full_text.strip():
+        print("❌ فشل استخراج النص! قد يكون الملف عبارة عن صور فقط أو محمي.")
+    else:
+        print(f"✅ تم استخراج {len(full_text)} حرف بنجاح.")
 
-    # تحليل النص بـ Gemini
-    model_name = get_available_model()
-    if model_name:
-        print(f"🤖 جاري التحليل باستخدام {model_name}...")
-        model = genai.GenerativeModel(model_name)
-        response = model.generate_content(
-            f"لخص أهم 5 معلومات في هذا النص:\n\n{full_text[:8000]}")
-        print("\n--- ملخص المستند ---")
-        print(response.text)
+        model_name = get_available_model()
+        if model_name:
+            print(f"🤖 جاري التحليل باستخدام {model_name}...")
+            model = genai.GenerativeModel(model_name)
+
+            # إرسال النص مع التأكد من دمج البرومبت بشكل صحيح
+            prompt = f"حلل النص التالي بدقة ولخص أهم النقاط:\n\n{full_text}"
+            response = model.generate_content(prompt)
+
+            # حفظ في ملف لضمان قراءة العربية بوضوح
+            with open("summary.txt", "w", encoding="utf-8") as f:
+                f.write(response.text)
+
+            print("✨ مبروك! افتح ملف summary.txt لتجد التلخيص.")
 else:
-    print(f"⚠️ يرجى وضع ملف باسم {file_name} في المجلد.")
+    print(f"⚠️ لم أجد ملف {file_name}")
