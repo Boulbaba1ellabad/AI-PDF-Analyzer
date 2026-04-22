@@ -1,147 +1,147 @@
 import os
-import customtkinter as ctk
+import tkinter as tk
 from tkinter import filedialog, messagebox
-import google.generativeai as genai
-from dotenv import load_dotenv
+import customtkinter as ctk
+from PIL import Image
 import pdfplumber
 import pandas as pd
-import arabic_reshaper
+import google.generativeai as genai
+from dotenv import load_dotenv
+from arabic_reshaper import reshape
 from bidi.algorithm import get_display
 
-# 1. إعدادات البيئة والذكاء الاصطناعي
+# تحميل الإعدادات
 load_dotenv()
 genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 
+# إعداد المظهر
+ctk.set_appearance_mode("dark")
+ctk.set_default_color_theme("blue")
 
-class DocumentAIApp(ctk.CTk):
+
+class AIAnalyzerPro(ctk.CTk):
     def __init__(self):
         super().__init__()
 
-        # إعدادات النافذة
-        self.title("AI Document Intelligence Pro v1.0")
-        self.geometry("700x600")
-        ctk.set_appearance_mode("dark")
-        ctk.set_default_color_theme("blue")
+        self.title("AI Document Intelligence Pro")
+        self.geometry("1100x750")
 
-        # واجهة المستخدم (UI Elements)
-        self.label = ctk.CTkLabel(
-            self, text="AI Document Analyzer", font=("Helvetica", 24, "bold"))
-        self.label.pack(pady=20)
+        # تقسيم الشاشة (Sidebar & Main)
+        self.grid_columnconfigure(1, weight=1)
+        self.grid_rowconfigure(0, weight=1)
 
-        self.btn_select = ctk.CTkButton(
-            self, text="Select PDF File", command=self.select_file, height=40, font=("Helvetica", 14, "bold"))
-        self.btn_select.pack(pady=10)
+        # --- القائمة الجانبية (Sidebar) ---
+        self.sidebar_frame = ctk.CTkFrame(self, width=240, corner_radius=0)
+        self.sidebar_frame.grid(row=0, column=0, sticky="nsew")
+        self.sidebar_frame.grid_rowconfigure(4, weight=1)
 
-        self.status_label = ctk.CTkLabel(
-            self, text="Status: Ready", text_color="gray")
-        self.status_label.pack(pady=5)
+        self.logo_label = ctk.CTkLabel(self.sidebar_frame, text="AI ANALYZER",
+                                       font=ctk.CTkFont(size=24, weight="bold"))
+        self.logo_label.grid(row=0, column=0, padx=20, pady=(30, 40))
 
-        self.output_text = ctk.CTkTextbox(
-            self, width=600, height=300, font=("Helvetica", 15))
-        self.output_text.pack(pady=15)
+        self.select_btn = ctk.CTkButton(self.sidebar_frame, text="Select PDF File",
+                                        command=self.select_file, height=40, font=("Segoe UI", 13, "bold"))
+        self.select_btn.grid(row=1, column=0, padx=20, pady=10)
 
-        self.btn_save = ctk.CTkButton(
-            self, text="Save Summary to File", command=self.save_to_file, state="disabled")
-        self.btn_save.pack(pady=10)
+        self.save_btn = ctk.CTkButton(self.sidebar_frame, text="Save Summary",
+                                      command=self.save_summary, state="disabled",
+                                      fg_color="transparent", border_width=2)
+        self.save_btn.grid(row=2, column=0, padx=20, pady=10)
 
-        self.last_summary = ""
+        self.appearance_mode_label = ctk.CTkLabel(
+            self.sidebar_frame, text="Appearance Mode:", anchor="w")
+        self.appearance_mode_label.grid(row=5, column=0, padx=20, pady=(10, 0))
+        self.appearance_mode_optionemenu = ctk.CTkOptionMenu(self.sidebar_frame, values=["Dark", "Light"],
+                                                             command=self.change_appearance_mode)
+        self.appearance_mode_optionemenu.grid(
+            row=6, column=0, padx=20, pady=(10, 20))
+
+        # --- المنطقة الأساسية (Main) ---
+        self.main_frame = ctk.CTkFrame(self, fg_color="transparent")
+        self.main_frame.grid(row=0, column=1, padx=30, pady=30, sticky="nsew")
+        self.main_frame.grid_columnconfigure(0, weight=1)
+        self.main_frame.grid_rowconfigure(2, weight=1)
+
+        self.title_label = ctk.CTkLabel(self.main_frame, text="Document Analysis Dashboard",
+                                        font=ctk.CTkFont(size=22, weight="bold"))
+        self.title_label.grid(row=0, column=0, sticky="w", pady=(0, 20))
+
+        # شريط التقدم
+        self.progress_bar = ctk.CTkProgressBar(self.main_frame)
+        self.progress_bar.grid(row=1, column=0, sticky="ew", pady=(0, 20))
+        self.progress_bar.set(0)
+
+        # منطقة عرض النص
+        self.result_text = ctk.CTkTextbox(self.main_frame, font=("Segoe UI", 15),
+                                          spacing3=12, corner_radius=15, border_width=1)
+        self.result_text.grid(row=2, column=0, sticky="nsew")
+
+        self.current_file = None
+
+    def fix_arabic(self, text):
+        reshaped_text = reshape(text)
+        return get_display(reshaped_text)
+
+    def change_appearance_mode(self, new_appearance_mode: str):
+        ctk.set_appearance_mode(new_appearance_mode)
 
     def select_file(self):
         file_path = filedialog.askopenfilename(
             filetypes=[("PDF Files", "*.pdf")])
         if file_path:
-            self.process_document(file_path)
+            self.current_file = file_path
+            self.process_document()
 
-    def process_document(self, path):
+    def process_document(self):
+        self.progress_bar.set(0.3)
+        self.result_text.delete("1.0", tk.END)
+        self.result_text.insert("1.0", self.fix_arabic(
+            "جاري تحليل الملف... يرجى الانتظار"))
+        self.update()
+
         try:
-            self.status_label.configure(
-                text="🔄 Reading PDF & Extracting Data...", text_color="yellow")
-            self.update()
-
-            text = ""
-            tables = []
-
-            # استخراج النصوص والجداول
-            with pdfplumber.open(path) as pdf:
+            # 1. استخراج الجداول
+            tables_data = []
+            with pdfplumber.open(self.current_file) as pdf:
                 for page in pdf.pages:
-                    text += (page.extract_text() or "") + "\n"
-                    tbl = page.extract_table()
-                    if tbl:
-                        tables.append(pd.DataFrame(tbl[1:], columns=tbl[0]))
+                    table = page.extract_table()
+                    if table:
+                        tables_data.extend(table)
 
-            # حفظ الجداول في اكسل إذا وجدت
-            if tables:
-                excel_name = "extracted_data.xlsx"
-                with pd.ExcelWriter(excel_name) as writer:
-                    for i, df in enumerate(tables):
-                        df.to_excel(
-                            writer, sheet_name=f"Table_{i+1}", index=False)
-                print(f"✅ Tables saved to {excel_name}")
+            if tables_data:
+                df = pd.DataFrame(tables_data[1:], columns=tables_data[0])
+                df.to_excel("extracted_data.xlsx", index=False)
 
-            # التحليل عبر الذكاء الاصطناعي
-            if text.strip():
-                self.status_label.configure(
-                    text="🤖 AI is analyzing content...", text_color="cyan")
-                self.update()
+            self.progress_bar.set(0.6)
 
-                # اختيار أفضل نموذج متاح تلقائياً لتجنب خطأ 404
-                try:
-                    available_models = [m.name for m in genai.list_models(
-                    ) if 'generateContent' in m.supported_generation_methods]
-                    selected_model = available_models[0] if available_models else "models/gemini-pro"
-                    model = genai.GenerativeModel(selected_model)
+            # 2. تحليل AI
+            model = genai.GenerativeModel('gemini-2.5-flash')
+            # (نفس منطق استخراج النص السابق يوضع هنا)
+            text_content = ""
+            with pdfplumber.open(self.current_file) as pdf:
+                text_content = " ".join([p.extract_text()
+                                        for p in pdf.pages if p.extract_text()])
 
-                    # البرومبت الاحترافي
-                    professional_prompt = f"قم بتلخيص هذا المستند بدقة كخبير محلل بيانات وبنقاط احترافية واضحة:\n\n{text[:10000]}"
-                    response = model.generate_content(professional_prompt)
+            response = model.generate_content(
+                f"قم بتلخيص هذا النص بشكل احترافي مع نقاط واضحة: {text_content}")
 
-                    self.last_summary = response.text
-
-                    # معالجة اللغة العربية للعرض بشكل صحيح
-                    reshaped_text = arabic_reshaper.reshape(self.last_summary)
-                    bidi_text = get_display(reshaped_text)
-
-                    self.output_text.delete("1.0", "end")
-                    self.output_text.insert("1.0", bidi_text)
-
-                    self.status_label.configure(
-                        text=f"✅ Analysis Complete", text_color="green")
-                    self.btn_save.configure(state="normal")
-
-                except Exception as ai_error:
-                    if "429" in str(ai_error):
-                        messagebox.showwarning(
-                            "Quota Limit", "تجاوزت حد الطلبات المسموح به. انتظر دقيقة ثم حاول مجدداً.")
-                        self.status_label.configure(
-                            text="⚠️ Quota Exceeded - Wait 1 min", text_color="orange")
-                    else:
-                        messagebox.showerror(
-                            "AI Error", f"خطأ في الذكاء الاصطناعي: {str(ai_error)}")
-                        self.status_label.configure(
-                            text="❌ AI Error", text_color="red")
-            else:
-                messagebox.showwarning(
-                    "Warning", "لم يتم العثور على نص داخل ملف الـ PDF.")
-                self.status_label.configure(
-                    text="⚠️ No Text Found", text_color="orange")
+            self.progress_bar.set(1.0)
+            self.result_text.delete("1.0", tk.END)
+            self.result_text.insert("1.0", self.fix_arabic(response.text))
+            self.save_btn.configure(state="normal")
 
         except Exception as e:
+            self.progress_bar.set(0)
             messagebox.showerror("Error", f"An error occurred: {str(e)}")
-            self.status_label.configure(text="❌ Error", text_color="red")
 
-    def save_to_file(self):
-        if self.last_summary:
-            file_path = filedialog.asksaveasfilename(
-                defaultextension=".txt",
-                filetypes=[("Text files", "*.txt")],
-                initialfile="ai_summary.txt"
-            )
-            if file_path:
-                with open(file_path, "w", encoding="utf-8") as f:
-                    f.write(self.last_summary)
-                messagebox.showinfo("Saved", "تم حفظ التلخيص بنجاح!")
+    def save_summary(self):
+        file_path = filedialog.asksaveasfilename(defaultextension=".txt")
+        if file_path:
+            with open(file_path, "w", encoding="utf-8") as f:
+                f.write(self.result_text.get("1.0", tk.END))
+            messagebox.showinfo("Success", "Summary saved successfully!")
 
 
 if __name__ == "__main__":
-    app = DocumentAIApp()
+    app = AIAnalyzerPro()
     app.mainloop()
