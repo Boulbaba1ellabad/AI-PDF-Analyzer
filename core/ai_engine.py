@@ -26,7 +26,7 @@ class ChatMessage:
 
 class AIEngine:
 
-    _MODELS      = ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro"]
+    _MODELS      = ["gemini-2.0-flash", "gemini-2.5-flash", "gemini-1.5-pro"]
     _MAX_HISTORY = 10
 
     def __init__(self):
